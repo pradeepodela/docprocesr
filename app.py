@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for, session
 import os
 import tempfile
 import json
@@ -7,9 +7,19 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 from config import Config
 from models import InvoiceData, LineItem
-from ocr_processing import ocr_pdf, ocr_image
-from llm_wrappers import _mistral_parse, _openrouter_parse, _create_invoice_extraction_prompt
 from csv_conversion import convert_invoices_to_csv, create_summary_csv
+# Modularized imports
+from app.routes import routes_bp
+from app.services import (
+    allowed_file,
+    save_upload_and_preview,
+    run_ocr,
+    persist_preview_to_public,
+    clean_invoice_numbers,
+    extract_with_llm,
+    build_result_payload,
+    delayed_cleanup_temp_previews,
+)
 
 app = Flask(
     __name__,
@@ -19,6 +29,10 @@ app = Flask(
 )
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
+
+# Register blueprint for static page routes and health
+# Preserve original endpoint names without requiring 'routes.' prefix
+app.register_blueprint(routes_bp, url_prefix="")
 
 
 # --- Logging Configuration ---
@@ -32,18 +46,9 @@ os.makedirs('temp_files', exist_ok=True)
 UPLOADS_TMP = 'uploads_tmp'
 os.makedirs(UPLOADS_TMP, exist_ok=True)
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+# Using allowed_file from services module
 
-@app.route('/')
-def index():
-    # Ensure template exists and render
-    return render_template('index.html')
-
-@app.route('/uploads_tmp/<path:filename>')
-def serve_temp_upload(filename):
-    # Serve temporary uploaded files for preview (images or PDFs)
-    return send_from_directory(UPLOADS_TMP, filename)
+# Routes for index, invoices, bank-statements, kyc, uploads_tmp served by blueprint in app/routes.py
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -72,66 +77,25 @@ def upload_files():
             errors.append(f"Unsupported file type: {getattr(file, 'filename', 'unknown')}")
             continue
         try:
-            filename = secure_filename(file.filename)
             # Save both to processing dir (existing) and temp public dir for preview
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            temp_public_path = os.path.join(UPLOADS_TMP, filename)
-            file.save(file_path)
-            try:
-                # Also save a temp public copy for UI preview
-                file.stream.seek(0)
-            except Exception:
-                pass
-            try:
-                with open(temp_public_path, 'wb') as ftmp:
-                    file.stream.seek(0)
-                    ftmp.write(file.read())
-            except Exception:
-                # If stream seek/read fails (already consumed), copy from saved file_path
-                import shutil
-                shutil.copyfile(file_path, temp_public_path)
+            file_path, temp_public_path = save_upload_and_preview(file)
+            filename = os.path.basename(file_path)
 
             app.logger.info(f"Saved file to {file_path} and temp preview to {temp_public_path}")
             
             # OCR processing
             md = None
             preview_url = None
-            if filename.lower().endswith('.pdf'):
-                app.logger.info(f"Processing PDF file: {filename}")
-                md, preview_url = ocr_pdf(file_path)
-            else:
-                app.logger.info(f"Processing Image file: {filename}")
-                md, preview_url = ocr_image(file_path)
+            app.logger.info(f"Processing file: {filename}")
+            md, preview_url = run_ocr(file_path)
             if md is None:
                 raise ValueError("OCR returned no metadata")
             # Persist a lightweight preview into public/previews for reliable UI preview
             try:
-                os.makedirs(os.path.join(app.static_folder, 'previews'), exist_ok=True)
-                saved_preview_path = None
-                if isinstance(preview_url, str) and preview_url.startswith('data:image'):
-                    # data URL -> save to file
-                    import base64, re
-                    m = re.match(r'data:image/(png|jpeg|jpg);base64,(.*)', preview_url)
-                    ext = m.group(1) if m else 'png'
-                    b64 = m.group(2) if m else preview_url.split(',', 1)[-1]
-                    data = base64.b64decode(b64)
-                    safe_base = os.path.splitext(filename)[0]
-                    saved_preview_path = os.path.join(app.static_folder, 'previews', f'{safe_base}.preview.{ext}')
-                    with open(saved_preview_path, 'wb') as out:
-                        out.write(data)
-                else:
-                    # If original is an image and still exists, copy as preview
-                    if filename.lower().endswith(('.png', '.jpg', '.jpeg')) and os.path.exists(file_path):
-                        import shutil
-                        safe_base = os.path.splitext(filename)[0]
-                        ext = os.path.splitext(filename)[1].lstrip('.').lower() or 'png'
-                        saved_preview_path = os.path.join(app.static_folder, 'previews', f'{safe_base}.preview.{ext}')
-                        shutil.copyfile(file_path, saved_preview_path)
-                if saved_preview_path and os.path.exists(saved_preview_path):
-                    # Expose as /public/previews/<file>
-                    md['preview_public_url'] = '/public/previews/' + os.path.basename(saved_preview_path)
-                elif preview_url and isinstance(preview_url, str) and preview_url.startswith('data:image'):
-                    # fallback keep original data url
+                public_url = persist_preview_to_public(preview_url, filename, file_path)
+                if isinstance(md, dict) and public_url:
+                    md['preview_public_url'] = public_url
+                elif isinstance(md, dict) and (preview_url and isinstance(preview_url, str) and preview_url.startswith('data:image')):
                     md['preview_public_url'] = preview_url
                 else:
                     app.logger.warning("No preview available to persist for UI")
@@ -139,53 +103,17 @@ def upload_files():
                 app.logger.warning(f"Preview persistence failed: {p_err}")
             
             # LLM extraction
-            prompt = _create_invoice_extraction_prompt(md)
-            app.logger.debug(f"Prompt created, length={len(prompt) if isinstance(prompt,str) else 'n/a'}")
-            
-            invoice_data = None
-            try:
-                if llm_choice == 'Mistral':
-                    from mistralai import TextChunk, ImageURLChunk
-                    chunks = [TextChunk(text=prompt)]
-                    if preview_url and isinstance(preview_url, str) and preview_url.startswith("data:image"):
-                        chunks = [ImageURLChunk(image_url=preview_url)] + chunks
-                    invoice_data = _mistral_parse(chunks)
-                else:  # OpenRouter
-                    img_arg = preview_url if (isinstance(preview_url, str) and preview_url.startswith("data:image")) else None
-                    invoice_data = _openrouter_parse(prompt, img_arg)
-            except Exception as llm_err:
-                app.logger.exception(f"LLM extraction failed for {filename}: {llm_err}")
-                errors.append(f"LLM extraction failed for {filename}: {str(llm_err)}")
-                invoice_data = None
+            invoice_data = extract_with_llm(md, preview_url, llm_choice)
+            if invoice_data is None:
+                app.logger.exception(f"LLM extraction failed for {filename}")
+                errors.append(f"LLM extraction failed for {filename}: see logs")
             
             # Validate and clean the extracted data
             if not isinstance(invoice_data, dict):
                 raise ValueError("Invalid data structure returned from LLM")
             
             # Clean numeric fields
-            numeric_fields = ['subtotal', 'tax_amount', 'discount_amount', 'total_amount']
-            for field in numeric_fields:
-                if field in invoice_data:
-                    try:
-                        invoice_data[field] = float(invoice_data[field]) if invoice_data[field] is not None else 0.0
-                    except (ValueError, TypeError):
-                        invoice_data[field] = 0.0
-            
-            # Clean line items
-            if 'line_items' in invoice_data and isinstance(invoice_data['line_items'], list):
-                cleaned_items = []
-                for item in invoice_data['line_items']:
-                    if isinstance(item, dict):
-                        # Clean numeric fields in line items
-                        item_numeric_fields = ['quantity', 'unit_price', 'total_price', 'tax_rate']
-                        for field in item_numeric_fields:
-                            if field in item:
-                                try:
-                                    item[field] = float(item[field]) if item[field] is not None else 0.0
-                                except (ValueError, TypeError):
-                                    item[field] = 0.0
-                        cleaned_items.append(item)
-                invoice_data['line_items'] = cleaned_items
+            invoice_data = clean_invoice_numbers(invoice_data)
             
             # Add metadata
             invoice_data['source_file'] = filename
@@ -259,47 +187,17 @@ def upload_files():
         app.logger.exception(f"Failed to write raw JSON: {json_err}")
         errors.append(f"Failed to write raw JSON: {str(json_err)}")
     
-    # Calculate summary statistics
-    total_line_items = sum(len(inv.get('line_items', [])) for inv in all_invoices)
-    total_amount = sum(inv.get('total_amount', 0) for inv in all_invoices)
-    
     # Store file paths in session for download
     session['temp_files'] = temp_file_paths
-    
-    result = {
-        'success': True,
-        'invoices': all_invoices,
-        'csv_files': csv_files,
-        'stats': {
-            'total_invoices': len(all_invoices),
-            'total_line_items': total_line_items,
-            'total_amount': total_amount,
-            'average_amount': total_amount / len(all_invoices) if all_invoices else 0
-        },
-        'errors': errors
-    }
+
+    # Build result payload
+    result = build_result_payload(all_invoices, errors)
+    # Inject CSV strings into payload
+    result['csv_files'] = csv_files
     
     # Schedule cleanup of temp previews once response is sent
     try:
-        # Note: Simple immediate cleanup after building response could race with client loading preview.
-        # We delay cleanup slightly using a background thread.
-        import threading, time
-        temp_preview_files = []
-        try:
-            temp_preview_files = [os.path.join(UPLOADS_TMP, inv.get('source_file', '')) for inv in all_invoices if inv.get('source_file')]
-        except Exception:
-            temp_preview_files = []
-
-        def delayed_cleanup(paths, delay=120):
-            time.sleep(delay)
-            for p in paths:
-                try:
-                    if p and os.path.exists(p):
-                        os.remove(p)
-                except Exception as e:
-                    app.logger.warning(f"Failed to remove temp preview {p}: {e}")
-
-        threading.Thread(target=delayed_cleanup, args=(temp_preview_files,), daemon=True).start()
+        delayed_cleanup_temp_previews(all_invoices, delay_seconds=120)
     except Exception as e:
         app.logger.warning(f"Failed to schedule temp previews cleanup: {e}")
 

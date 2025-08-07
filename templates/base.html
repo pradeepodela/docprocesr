@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}DocSer — AI Document Services{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: ['class'],
+      theme: {
+        extend: {
+          colors: {
+            border: 'hsl(240 3.7% 15.9%)',
+            input: 'hsl(240 3.7% 15.9%)',
+            ring: 'hsl(240 4.9% 83.9%)',
+            background: 'hsl(240 10% 3.9%)',
+            foreground: 'hsl(0 0% 98%)',
+            primary: { DEFAULT: 'hsl(251 85% 66%)', foreground: 'hsl(0 0% 100%)' },
+            muted: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(240 5% 64.9%)' },
+            card: { DEFAULT: 'hsl(240 10% 3.9%)', foreground: 'hsl(0 0% 98%)' },
+            accent: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(0 0% 98%)' },
+          },
+          borderRadius: { lg: '0.75rem', md: '0.5rem', sm: '0.375rem' },
+          boxShadow: { card: '0 1px 0 0 rgba(255,255,255,0.04) inset, 0 1px 2px 0 rgba(0,0,0,0.4)' }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      /* Minimal Pastel SaaS: soft pastels on white, gentle contrast */
+      --bg-gradient: radial-gradient(800px 400px at 10% -10%, #f8fbff 0%, transparent 60%), radial-gradient(700px 350px at 110% -10%, #fff7fb 0%, transparent 55%);
+      --background: #fcfcfd;     /* near-white */
+      --surface: #ffffff;        /* cards */
+      --foreground: #0f172a;     /* slate-900 for readability */
+      --subtle: #64748b;         /* slate-500 */
+      --border: #eaeef3;         /* soft cool border */
+
+      /* Pastel accents */
+      --primary: #7c9cff;        /* pastel cornflower */
+      --primary-2: #5f80f7;      /* hover/tap */
+      --teal: #7ee1d0;           /* mint-teal */
+      --indigo: #b6a6ff;         /* soft indigo */
+      --accent: #ffd7e0;         /* blush */
+      --warning: #ffe8b3;        /* pastel amber */
+      --success: #c9f3d2;        /* pastel green */
+
+      --primary-foreground: #0b1020;
+      --ring: color-mix(in oklab, var(--primary) 35%, transparent);
+
+      --card: var(--surface);
+      --card-foreground: var(--foreground);
+
+      --shadow-1: 0 1px 0 rgba(15, 23, 42, 0.03), 0 8px 24px rgba(15, 23, 42, 0.05);
+      --shadow-2: 0 2px 0 rgba(15, 23, 42, 0.03), 0 12px 30px rgba(15, 23, 42, 0.10);
+      --shadow-inset: 0 1px 0 0 rgba(15,23,42,0.04) inset;
+
+      --muted-bg: #f6f8fb;       /* paper */
+      --muted: #667085;          /* subtle text */
+      --muted-strong: #334155;   /* headings on soft UI */
+
+      --upload-hover: color-mix(in oklab, var(--primary) 8%, transparent);
+      --progress-track: color-mix(in oklab, var(--primary) 12%, transparent);
+      --accent-strong: color-mix(in oklab, var(--primary) 14%, transparent);
+    }
+    html.dark {
+      color-scheme: dark;
+      /* Pastel dark: deep background with softened accents */
+      --bg-gradient: radial-gradient(1200px 600px at -10% -20%, #0d1424 0%, transparent 60%), radial-gradient(1000px 500px at 120% -10%, #171a2b 0%, transparent 55%);
+      --background: #0f172a;
+      --surface: #0b1220;
+      --foreground: #e2e8f0;
+      --subtle: #9fb0d0;
+      --border: #1e293b;
+
+      --primary: #92aaff;
+      --primary-2: #6b86ff;
+      --teal: #7bd8c9;
+      --indigo: #b39cff;
+      --accent: #ffbbcc;
+      --warning: #ffd891;
+      --success: #b9efc8;
+
+      --primary-foreground: #0b1020;
+      --ring: color-mix(in oklab, var(--primary) 45%, transparent);
+
+      --card: #0b1220;
+      --card-foreground: #e2e8f0;
+
+      --shadow-1: 0 1px 0 rgba(255,255,255,0.03), 0 12px 30px rgba(2,6,23,0.45);
+      --shadow-2: 0 2px 0 rgba(255,255,255,0.04), 0 18px 42px rgba(2,6,23,0.6);
+      --shadow-inset: 0 1px 0 0 rgba(255,255,255,0.04) inset;
+
+      --muted-bg: rgba(226, 232, 240, .06);
+      --muted: #b5c0d0;
+      --muted-strong: #ffffff;
+
+      --upload-hover: color-mix(in oklab, var(--primary) 10%, transparent);
+      --progress-track: color-mix(in oklab, var(--primary) 14%, transparent);
+      --accent-strong: color-mix(in oklab, var(--primary) 18%, transparent);
+    }
+
+    body {
+      background: var(--background);
+      background-image: var(--bg-gradient);
+      background-attachment: fixed;
+    }
+
+    .card {
+      background: linear-gradient(180deg, color-mix(in oklab, var(--card) 88%, transparent), transparent);
+      color: var(--card-foreground);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      box-shadow: var(--shadow-1);
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-2);
+      border-color: color-mix(in oklab, var(--primary) 18%, var(--border));
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      white-space: nowrap; border-radius: 0.75rem; font-size: 0.9rem; font-weight: 650;
+      transition: transform .08s ease, color .15s ease, background .15s ease, border .15s ease, opacity .15s ease;
+      outline: none; height: 2.6rem; padding: 0 1rem;
+      color: var(--foreground); border: 1px solid transparent;
+    }
+    .btn:active { transform: translateY(1px) scale(0.995); }
+    .btn:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+    .btn-primary { background: linear-gradient(135deg, var(--primary), var(--indigo)); color: var(--primary-foreground); }
+    .btn-primary:hover { background: linear-gradient(135deg, var(--primary-2), var(--indigo)); filter: brightness(1.02); }
+    .btn-outline { border: 1px solid var(--border); background: linear-gradient(180deg, color-mix(in oklab, var(--muted-bg) 35%, transparent), transparent); color: var(--foreground); }
+    .btn-outline:hover { background: color-mix(in oklab, var(--muted-bg) 65%, transparent); }
+    .btn-ghost { border: none; background: transparent; color: var(--muted-strong); }
+    .btn-ghost:hover { background: var(--muted-bg); color: var(--foreground); }
+
+    .kbd { border: 1px solid var(--border); border-radius: 8px; padding: 2px 8px; font-size: 12px; color: var(--muted); background: var(--muted-bg); }
+    .muted { font-size: .92rem; color: var(--muted); }
+
+    .nav-link { display:flex; align-items:center; gap:.6rem; padding:.6rem .75rem; border-radius:.65rem; color: var(--muted); border: 1px solid transparent; transition: background .15s ease, color .15s ease, border .15s ease; }
+    .nav-link.active, .nav-link:hover { background: linear-gradient(180deg, color-mix(in oklab, var(--muted-bg) 60%, transparent), transparent); color: var(--foreground); border-color: color-mix(in oklab, var(--primary) 15%, var(--border)); }
+    .nav-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--primary); box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 20%, transparent); }
+
+    .badge { background: var(--muted-bg); color: var(--muted-strong); border-radius: 999px; padding: 2px 8px; border: 1px solid var(--border); }
+    .stat { display:flex; align-items:center; gap:.75rem; }
+    .stat .icon { width: 40px; height: 40px; display:grid; place-items:center; border-radius: 12px; background: linear-gradient(135deg, color-mix(in oklab, var(--primary) 28%, transparent), color-mix(in oklab, var(--teal) 28%, transparent)); color: #0b1020; box-shadow: var(--shadow-1); }
+
+    .glass {
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,0)) ;
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      box-shadow: var(--shadow-inset), var(--shadow-1);
+      backdrop-filter: blur(10px);
+    }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)]">
+  <div class="min-h-screen">
+    <header class="sticky top-0 z-20 border-b border-[var(--border)] backdrop-blur supports-[backdrop-filter]:bg-[color-mix(in_oklab,var(--background)_85%,transparent)]">
+      <div class="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+        <a href="{{ url_for('routes.index') }}" class="flex items-center gap-3">
+          <div class="h-8 w-8 rounded-md grid place-items-center text-[var(--primary-foreground)] text-xs font-bold shadow" style="background: linear-gradient(135deg, var(--primary), var(--indigo));">DS</div>
+          <div class="flex flex-col leading-tight">
+            <span class="font-semibold tracking-wide">DocSer</span>
+            <span class="text-xs text-[var(--subtle)]">AI Document Services</span>
+          </div>
+        </a>
+        <div class="flex items-center gap-2">
+          <a href="{{ url_for('routes.invoices_page') }}" class="btn btn-outline hidden lg:inline-flex">Invoices</a>
+          <a href="{{ url_for('routes.bank_statements_page') }}" class="btn btn-outline hidden lg:inline-flex">Bank Statements</a>
+          <a href="{{ url_for('routes.kyc_page') }}" class="btn btn-outline hidden lg:inline-flex">KYC</a>
+          <button id="themeIconToggle" aria-label="Toggle theme" class="btn btn-outline h-9 w-9 grid place-items-center" title="Toggle theme">
+            <span id="themeIcon" class="text-lg">🌙</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="mx-auto max-w-7xl p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <aside class="lg:col-span-3">
+        <div class="glass p-4">
+          <div class="text-xs muted mb-3 tracking-wide uppercase">Services</div>
+          <nav class="space-y-1">
+            <a href="{{ url_for('routes.invoices_page') }}" class="nav-link {% if request.path.startswith('/invoices') %}active{% endif %}">
+              <span class="nav-dot"></span>
+              <span>Invoices</span>
+            </a>
+            <a href="{{ url_for('routes.bank_statements_page') }}" class="nav-link {% if request.path.startswith('/bank-statements') %}active{% endif %}">
+              <span class="nav-dot"></span>
+              <span>Bank Statements</span>
+            </a>
+            <a href="{{ url_for('routes.kyc_page') }}" class="nav-link {% if request.path.startswith('/kyc') %}active{% endif %}">
+              <span class="nav-dot"></span>
+              <span>KYC</span>
+            </a>
+          </nav>
+          <div class="text-xs muted mt-4 mb-2 tracking-wide uppercase">Utilities</div>
+          <nav class="space-y-1">
+            <a href="{{ url_for('routes.api_health') }}" class="nav-link">
+              <span class="nav-dot"></span>
+              <span>API Health</span>
+            </a>
+          </nav>
+
+          <div class="mt-6 grid grid-cols-2 gap-2">
+            <a href="{{ url_for('routes.invoices_page') }}" class="btn btn-primary">New Run</a>
+            <a href="{{ url_for('routes.index') }}" class="btn btn-outline">Dashboard</a>
+          </div>
+        </div>
+      </aside>
+
+      <main class="lg:col-span-9 space-y-4">
+        <!-- Quick stats -->
+        <section class="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="card p-4 stat">
+            <div class="icon">📄</div>
+            <div>
+              <div class="text-xs muted">Docs Processed</div>
+              <div class="text-xl font-semibold">1,248</div>
+            </div>
+          </div>
+          <div class="card p-4 stat">
+            <div class="icon">⚡</div>
+            <div>
+              <div class="text-xs muted">Avg. Throughput</div>
+              <div class="text-xl font-semibold">84/min</div>
+            </div>
+          </div>
+          <div class="card p-4 stat">
+            <div class="icon">✅</div>
+            <div>
+              <div class="text-xs muted">Success Rate</div>
+              <div class="text-xl font-semibold">99.2%</div>
+            </div>
+          </div>
+          <div class="card p-4 stat">
+            <div class="icon">⏱️</div>
+            <div>
+              <div class="text-xs muted">Avg. Latency</div>
+              <div class="text-xl font-semibold">1.8s</div>
+            </div>
+          </div>
+        </section>
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // Theme setup
+    const themeIconToggle = document.getElementById('themeIconToggle');
+    const themeIcon = document.getElementById('themeIcon');
+    const storedTheme = localStorage.getItem('theme') || 'dark';
+    let dark = storedTheme === 'dark';
+    document.documentElement.classList.toggle('dark', dark);
+    function updateThemeIcon() {
+      if (!themeIcon) return;
+      themeIcon.textContent = dark ? '🌙' : '☀️';
+      themeIconToggle.title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    }
+    updateThemeIcon();
+    if (themeIconToggle) {
+      themeIconToggle.addEventListener('click', () => {
+        dark = !dark;
+        document.documentElement.classList.toggle('dark', dark);
+        localStorage.setItem('theme', dark ? 'dark' : 'light');
+        updateThemeIcon();
+      });
+    }
+  </script>
+  {% block body_scripts %}{% endblock %}
+</body>
+</html>

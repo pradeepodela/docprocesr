@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Bank Statements — DocSer{% endblock %}
+{% block content %}
+  <div class="space-y-4">
+    <div class="card p-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="font-semibold">Bank Statement Processing</div>
+          <div class="muted">Parse statements, categorize transactions, and export insights.</div>
+        </div>
+        <span class="badge">Coming Soon</span>
+      </div>
+      <div class="mt-4 grid sm:grid-cols-2 gap-3">
+        <div class="p-3 border border-[var(--border)] rounded-md">
+          <div class="text-sm font-medium mb-1">Planned features</div>
+          <ul class="list-disc pl-5 muted text-sm space-y-1">
+            <li>Import CSV, XLSX, PDF statements</li>
+            <li>Auto-detect bank formats</li>
+            <li>Rule-based and LLM categorization</li>
+            <li>Duplicate detection and consolidation</li>
+            <li>Export to CSV/JSON/Accounting tools</li>
+          </ul>
+        </div>
+        <div class="p-3 border border-[var(--border)] rounded-md">
+          <div class="text-sm font-medium mb-1">Status</div>
+          <div class="muted text-sm">Design phase. If you have target bank formats, share samples to prioritize support.</div>
+          <div class="mt-3">
+            <a href="{{ url_for('routes.index') }}" class="btn btn-outline">Back to Dashboard</a>
+            <a href="{{ url_for('routes.invoices_page') }}" class="btn btn-primary ml-2">Use Invoices Service</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <div class="text-sm font-medium">Early Access Sign-up</div>
+      <div class="muted text-sm">Enter your email to get notified when bank statements go live.</div>
+      <form class="mt-3 grid sm:grid-cols-3 gap-2" onsubmit="event.preventDefault(); notifyEarlyAccess();">
+        <input id="earlyEmail" class="input sm:col-span-2" placeholder="you@company.com" type="email" required />
+        <button class="btn btn-primary" type="submit">Notify Me</button>
+      </form>
+      <div id="notifyMsg" class="muted text-sm mt-2" hidden>Thanks! You’ll be notified.</div>
+    </div>
+  </div>
+{% endblock %}
+{% block body_scripts %}
+<script>
+function notifyEarlyAccess() {
+  const email = document.getElementById('earlyEmail').value.trim();
+  if (!email) return;
+  try {
+    localStorage.setItem('bank_statements_notify_email', email);
+    const msg = document.getElementById('notifyMsg');
+    msg.hidden = false;
+    setTimeout(() => { msg.hidden = true; }, 4000);
+  } catch {}
+}
+</script>
+{% endblock %}
