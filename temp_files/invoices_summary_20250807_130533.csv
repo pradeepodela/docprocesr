@@ -1,0 +1,2 @@
+file_number,invoice_number,invoice_date,due_date,vendor_name,customer_name,line_items_count,subtotal,tax_amount,discount_amount,total_amount,currency,gst_number
+1,51109338,2013-04-13,,"Andrews, Kirby and Valdez",Becker Ltd,7,5640.17,564.02,0.0,6204.19,USD,942-80-0517
